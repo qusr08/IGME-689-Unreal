@@ -2,25 +2,19 @@
 
 #pragma once
 
+#include <cmath>
+
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Http.h"
 #include "Components/SplineComponent.h"
 #include "Components/SplineMeshComponent.h"
+#include "ArcGISMapsSDK/BlueprintNodes/GameEngine/Geometry/ArcGISSpatialReference.h"
+#include "ArcGISMapsSDK/Components/ArcGISLocationComponent.h"
+#include "ArcGISMapsSDK/Components/ArcGISMapComponent.h"
+#include "ArcGISMapsSDK/Utils/GeoCoord/GeoPosition.h"
+#include "ArcGISMapsSDK/Actors/ArcGISMapActor.h"
 #include "FeatureLayerQuery.generated.h"
-
-USTRUCT(BlueprintType)
-struct FCoordinate
-{
-	GENERATED_BODY();
-
-public:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	float Longitude;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-	float Latitude;
-};
 
 UCLASS()
 class ASSIGNMENT_4_API AFeatureLayerQuery : public AActor
@@ -31,10 +25,11 @@ public:
 	AFeatureLayerQuery();
 
 	virtual void Tick(float DeltaTime) override;
-	void OnConstruction(const FTransform& Transform) override;
 
 	virtual void OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool IsConnected);
 	virtual void ProcessRequest();
+
+	virtual void UpdateTrack();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	FString TrackLocation;
@@ -46,13 +41,25 @@ public:
 	int TrackLength;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<UArcGISPoint*> TrackCoordinates;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	int ActiveFeatureIndex;
 
 	UPROPERTY(VisibleAnywhere)
 	USplineComponent* SplineComponent;
 
+	UPROPERTY(VisibleAnywhere)
+	UArcGISMapComponent* MapComponent;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	UStaticMesh* SplineMesh;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	AActor* CarActor;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	AArcGISMapActor* MapActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
 	TEnumAsByte<ESplineMeshAxis::Type> ForwardAxis;
@@ -62,6 +69,7 @@ protected:
 	virtual void BeginPlay() override;
 
 private:
+
 	FString weblink = "https://services2.arcgis.com/yL7v93RXrxlqkeDx/arcgis/rest/services/F1_World_Championship_Circuits/FeatureServer/0/query?f=geojson&where=1=1&outfields=*";
 
 };

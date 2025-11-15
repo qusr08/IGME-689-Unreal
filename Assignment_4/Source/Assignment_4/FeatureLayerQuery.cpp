@@ -1,7 +1,5 @@
 #include "FeatureLayerQuery.h"
 
-#include "Kismet/GameplayStatics.h"
-
 AFeatureLayerQuery::AFeatureLayerQuery()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -10,6 +8,7 @@ AFeatureLayerQuery::AFeatureLayerQuery()
 	if (SplineComponent)
 	{
 		SetRootComponent(SplineComponent);
+		SplineComponent->SetClosedLoop(true);
 	}
 }
 
@@ -25,11 +24,6 @@ void AFeatureLayerQuery::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-void AFeatureLayerQuery::OnConstruction(const FTransform& Transform)
-{
-
-}
-
 void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool IsConnected)
 {
 	// Make sure the data was successfully received
@@ -39,10 +33,14 @@ void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpRespon
 	}
 
 	// Make sure the spline mesh is not null
-	if (!SplineMesh)
+	if (!SplineMesh || !CarActor || !MapActor)
 	{
 		return;
 	}
+
+	// Set map component and callback
+	MapComponent = MapActor->GetMapComponent();
+	//MapComponent->OnOriginPositionChanged.AddDynamic(this, &AFeatureLayerQuery::UpdateTrack);
 
 	// Create a reader so we can parse the JSON data
 	TSharedPtr<FJsonObject> responseObject;
@@ -68,39 +66,20 @@ void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpRespon
 
 		// Set track geometry points
 		auto featureGeometry = featureObjects[ActiveFeatureIndex]->AsObject()->GetObjectField(TEXT("geometry"))->GetArrayField(TEXT("coordinates"));
-		for (int i = 0; i < featureGeometry.Num(); i++)
+		for (int i = 0; i < (featureGeometry.Num() - 1); i++)
 		{
-			FVector featureCoordinate;
-			featureCoordinate.X = featureGeometry[i]->AsArray()[0]->AsNumber();
-			featureCoordinate.Y = featureGeometry[i]->AsArray()[1]->AsNumber();
-			SplineComponent->AddSplinePoint(featureCoordinate, ESplineCoordinateSpace::Local, true);
-
-			if (i == 0) {
-				/*auto origin = UArcGISPoint::CreateArcGISPointWithXYZSpatialReference(-74.054921, 40.691242, 3000, UArcGISSpatialReference::WGS84());
-				const auto mapComponentActor = UGameplayStatics::GetActorOfClass(GetWorld(), AArcGISMapActor::StaticClass());
-				const auto mapComponent = Cast<AArcGISMapActor>(mapComponentActor)->GetMapComponent();
-				mapComponent->SetOrigin()*/
-			}
+			UArcGISSpatialReference* spatialReference = UArcGISSpatialReference::WGS84();
+			UArcGISPoint* coordinate = UArcGISPoint::CreateArcGISPointWithXYZSpatialReference(featureGeometry[i]->AsArray()[0]->AsNumber(), featureGeometry[i]->AsArray()[1]->AsNumber(), 0.25, spatialReference);
+			TrackCoordinates.Add(coordinate);
+			UE_LOG(LogTemp, Warning, TEXT("(%f, %f)"), coordinate->GetX(), coordinate->GetY());
 		}
 
-		// Create spline mesh components
-		for (int i = 0; i < (SplineComponent->GetNumberOfSplinePoints() - 1); i++)
-		{
-			USplineMeshComponent* SplineMeshComponent = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass());
+		// Set the map origin
+		MapComponent->SetOriginPosition(TrackCoordinates[0]);
 
-			SplineMeshComponent->SetStaticMesh(SplineMesh);
-			SplineMeshComponent->SetMobility(EComponentMobility::Movable);
-			SplineMeshComponent->CreationMethod = EComponentCreationMethod::Instance;
-			SplineMeshComponent->AttachToComponent(SplineComponent, FAttachmentTransformRules::KeepRelativeTransform);
-
-			const FVector StartPoint = SplineComponent->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
-			const FVector StartTangent = SplineComponent->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
-			const FVector EndPoint = SplineComponent->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
-			const FVector EndTangent = SplineComponent->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
-
-			SplineMeshComponent->SetStartAndEnd(StartPoint, StartTangent, EndPoint, EndTangent, true);
-			SplineMeshComponent->SetForwardAxis(ForwardAxis);
-		}
+		// Update the track after a delay so the map component can update it's position
+		FTimerHandle UnusedHandle;
+		GetWorldTimerManager().SetTimer(UnusedHandle, this, &AFeatureLayerQuery::UpdateTrack, 1, false);
 	}
 }
 
@@ -114,3 +93,39 @@ void AFeatureLayerQuery::ProcessRequest()
 	request->ProcessRequest();
 }
 
+void AFeatureLayerQuery::UpdateTrack()
+{
+	// Set the car rotation to face down the track
+	FVector direction = MapComponent->TransformPointToEnginePosition(TrackCoordinates[1]) - MapComponent->TransformPointToEnginePosition(TrackCoordinates[0]);
+	float angleRadians = atan2(direction.Y, direction.X);
+	CarActor->SetActorLocation(FVector::TVector(0, 0, 25));
+	CarActor->SetActorRotation(FQuat::MakeFromEuler(FVector::TVector(0, 0, angleRadians * 57.2957795131)));
+
+	// Create spline mesh components
+	SplineComponent->AddSplinePoint(MapComponent->TransformPointToEnginePosition(TrackCoordinates[0]), ESplineCoordinateSpace::Local, true);
+	for (int i = 1; i <= TrackCoordinates.Num(); i++)
+	{
+		if (i < TrackCoordinates.Num())
+		{
+			SplineComponent->AddSplinePoint(MapComponent->TransformPointToEnginePosition(TrackCoordinates[i]), ESplineCoordinateSpace::Local, true);
+		}
+
+		USplineMeshComponent* SplineMeshComponent = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass());
+
+		SplineMeshComponent->SetStaticMesh(SplineMesh);
+		SplineMeshComponent->SetMobility(EComponentMobility::Movable);
+		SplineMeshComponent->CreationMethod = EComponentCreationMethod::Instance;
+		SplineMeshComponent->RegisterComponentWithWorld(GetWorld());
+		SplineMeshComponent->AttachToComponent(SplineComponent, FAttachmentTransformRules::KeepRelativeTransform);
+
+		const FVector StartPoint = SplineComponent->GetLocationAtSplinePoint(i - 1, ESplineCoordinateSpace::Local);
+		const FVector StartTangent = SplineComponent->GetTangentAtSplinePoint(i - 1, ESplineCoordinateSpace::Local);
+		const FVector EndPoint = SplineComponent->GetLocationAtSplinePoint((i == TrackCoordinates.Num() ? 0 : i), ESplineCoordinateSpace::Local);
+		const FVector EndTangent = SplineComponent->GetTangentAtSplinePoint((i == TrackCoordinates.Num() ? 0 : i), ESplineCoordinateSpace::Local);
+
+		SplineMeshComponent->SetStartAndEnd(StartPoint, StartTangent, EndPoint, EndTangent, true);
+		SplineMeshComponent->SetStartScale(FVector2D::TVector2(4, 1));
+		SplineMeshComponent->SetEndScale(FVector2D::TVector2(4, 1));
+		SplineMeshComponent->SetForwardAxis(ForwardAxis);
+	}
+}
