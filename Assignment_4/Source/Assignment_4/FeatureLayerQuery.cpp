@@ -1,17 +1,18 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
-// https://services2.arcgis.com/yL7v93RXrxlqkeDx/arcgis/rest/services/F1_World_Championship_Circuits/FeatureServer/0/query?f=geojson&where=1=1&outfields=*
-
 #include "FeatureLayerQuery.h"
 
-// Sets default values
+#include "Kismet/GameplayStatics.h"
+
 AFeatureLayerQuery::AFeatureLayerQuery()
 {
-	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
+
+	SplineComponent = CreateDefaultSubobject<USplineComponent>("Spline");
+	if (SplineComponent)
+	{
+		SetRootComponent(SplineComponent);
+	}
 }
 
-// Called when the game starts or when spawned
 void AFeatureLayerQuery::BeginPlay()
 {
 	Super::BeginPlay();
@@ -19,16 +20,26 @@ void AFeatureLayerQuery::BeginPlay()
 	ProcessRequest();
 }
 
-// Called every frame
 void AFeatureLayerQuery::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+}
+
+void AFeatureLayerQuery::OnConstruction(const FTransform& Transform)
+{
 
 }
 
 void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool IsConnected)
 {
+	// Make sure the data was successfully received
 	if (!IsConnected)
+	{
+		return;
+	}
+
+	// Make sure the spline mesh is not null
+	if (!SplineMesh)
 	{
 		return;
 	}
@@ -43,26 +54,52 @@ void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpRespon
 		// Get a list of the features
 		auto featureObjects = responseObject->GetArrayField(TEXT("features"));
 
-		for (auto feature : featureObjects)
+		// Make sure the active index is valid
+		if (ActiveFeatureIndex < 0 || ActiveFeatureIndex >= featureObjects.Num())
 		{
-			FFeature currentFeature;
+			return;
+		}
 
-			auto featureProperties = feature->AsObject()->GetObjectField(TEXT("properties"));
-			currentFeature.ID = featureProperties->GetStringField(TEXT("id"));
-			currentFeature.Location = featureProperties->GetStringField(TEXT("location"));
-			currentFeature.Name = featureProperties->GetStringField(TEXT("name"));
-			currentFeature.TrackLength = featureProperties->GetIntegerField(TEXT("length"));
+		// Set track properties
+		auto featureProperties = featureObjects[ActiveFeatureIndex]->AsObject()->GetObjectField(TEXT("properties"));
+		TrackLocation = featureProperties->GetStringField(TEXT("location"));
+		TrackName = featureProperties->GetStringField(TEXT("name"));
+		TrackLength = featureProperties->GetIntegerField(TEXT("length"));
 
-			auto featureGeometry = feature->AsObject()->GetObjectField(TEXT("geometry"))->GetArrayField(TEXT("coordinates"));
-			for (auto coordinate : featureGeometry)
-			{
-				FCoordinate featureCoordinate;
-				featureCoordinate.Longitude = coordinate->AsArray()[0]->AsNumber();
-				featureCoordinate.Latitude = coordinate->AsArray()[1]->AsNumber();
-				currentFeature.Coordinates.Add(featureCoordinate);
+		// Set track geometry points
+		auto featureGeometry = featureObjects[ActiveFeatureIndex]->AsObject()->GetObjectField(TEXT("geometry"))->GetArrayField(TEXT("coordinates"));
+		for (int i = 0; i < featureGeometry.Num(); i++)
+		{
+			FVector featureCoordinate;
+			featureCoordinate.X = featureGeometry[i]->AsArray()[0]->AsNumber();
+			featureCoordinate.Y = featureGeometry[i]->AsArray()[1]->AsNumber();
+			SplineComponent->AddSplinePoint(featureCoordinate, ESplineCoordinateSpace::Local, true);
+
+			if (i == 0) {
+				/*auto origin = UArcGISPoint::CreateArcGISPointWithXYZSpatialReference(-74.054921, 40.691242, 3000, UArcGISSpatialReference::WGS84());
+				const auto mapComponentActor = UGameplayStatics::GetActorOfClass(GetWorld(), AArcGISMapActor::StaticClass());
+				const auto mapComponent = Cast<AArcGISMapActor>(mapComponentActor)->GetMapComponent();
+				mapComponent->SetOrigin()*/
 			}
+		}
 
-			Features.Add(currentFeature);
+		// Create spline mesh components
+		for (int i = 0; i < (SplineComponent->GetNumberOfSplinePoints() - 1); i++)
+		{
+			USplineMeshComponent* SplineMeshComponent = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass());
+
+			SplineMeshComponent->SetStaticMesh(SplineMesh);
+			SplineMeshComponent->SetMobility(EComponentMobility::Movable);
+			SplineMeshComponent->CreationMethod = EComponentCreationMethod::Instance;
+			SplineMeshComponent->AttachToComponent(SplineComponent, FAttachmentTransformRules::KeepRelativeTransform);
+
+			const FVector StartPoint = SplineComponent->GetLocationAtSplinePoint(i, ESplineCoordinateSpace::Local);
+			const FVector StartTangent = SplineComponent->GetTangentAtSplinePoint(i, ESplineCoordinateSpace::Local);
+			const FVector EndPoint = SplineComponent->GetLocationAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+			const FVector EndTangent = SplineComponent->GetTangentAtSplinePoint(i + 1, ESplineCoordinateSpace::Local);
+
+			SplineMeshComponent->SetStartAndEnd(StartPoint, StartTangent, EndPoint, EndTangent, true);
+			SplineMeshComponent->SetForwardAxis(ForwardAxis);
 		}
 	}
 }
