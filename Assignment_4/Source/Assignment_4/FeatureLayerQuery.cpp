@@ -71,7 +71,6 @@ void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpRespon
 			UArcGISSpatialReference* spatialReference = UArcGISSpatialReference::WGS84();
 			UArcGISPoint* coordinate = UArcGISPoint::CreateArcGISPointWithXYZSpatialReference(featureGeometry[i]->AsArray()[0]->AsNumber(), featureGeometry[i]->AsArray()[1]->AsNumber(), 0.25, spatialReference);
 			TrackCoordinates.Add(coordinate);
-			UE_LOG(LogTemp, Warning, TEXT("(%f, %f)"), coordinate->GetX(), coordinate->GetY());
 		}
 
 		// Set the map origin
@@ -102,6 +101,8 @@ void AFeatureLayerQuery::UpdateTrack()
 	CarActor->SetActorRotation(FQuat::MakeFromEuler(FVector::TVector(0, 0, angleRadians * 57.2957795131)));
 
 	// Create spline mesh components
+	//SplineComponent->ClearSplinePoints(false);
+	/*SplineComponent->SetLocationAtSplinePoint(0, MapComponent->TransformPointToEnginePosition(TrackCoordinates[0]), ESplineCoordinateSpace::Local, true);*/
 	SplineComponent->AddSplinePoint(MapComponent->TransformPointToEnginePosition(TrackCoordinates[0]), ESplineCoordinateSpace::Local, true);
 	for (int i = 1; i <= TrackCoordinates.Num(); i++)
 	{
@@ -111,6 +112,7 @@ void AFeatureLayerQuery::UpdateTrack()
 		}
 
 		USplineMeshComponent* SplineMeshComponent = NewObject<USplineMeshComponent>(this, USplineMeshComponent::StaticClass());
+		//SplineMeshComponent->SetRelativeScale3D(FVector::TVector(4, 4, 1));
 
 		SplineMeshComponent->SetStaticMesh(SplineMesh);
 		SplineMeshComponent->SetMobility(EComponentMobility::Movable);
