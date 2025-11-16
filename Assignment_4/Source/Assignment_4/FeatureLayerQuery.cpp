@@ -22,6 +22,26 @@ void AFeatureLayerQuery::BeginPlay()
 void AFeatureLayerQuery::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	if (!MapComponent || !CarActor)
+	{
+		return;
+	}
+
+	// Get the distance between the car and the current checkpoint position
+	// Each checkpoint is just a seem on the spline
+	float distance = (MapComponent->TransformPointToEnginePosition(TrackCoordinates[CheckpointIndex]) - CarActor->GetActorLocation()).Length();
+	UE_LOG(LogTemp, Warning, TEXT("%f"), distance);
+
+	// If the player is close enough, increment to the next checkpoint
+	if (distance < 1000) {
+		CheckpointIndex++;
+
+		// If they have finished all the checkpoints, then stop the timer and show their time on the UI
+		if (CheckpointIndex == TrackCoordinates.Num()) {
+			
+		}
+	}
 }
 
 void AFeatureLayerQuery::OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool IsConnected)

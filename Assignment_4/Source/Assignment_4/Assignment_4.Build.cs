@@ -12,8 +12,6 @@ public class Assignment_4 : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[] { "ArcGISMapsSDK" });
 
-		IncludeOrderVersion = EngineIncludeOrderVersion.Latest;
-
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
 

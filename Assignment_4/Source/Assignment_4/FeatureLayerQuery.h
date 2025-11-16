@@ -46,6 +46,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	int ActiveFeatureIndex;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	int CheckpointIndex;
+
 	UPROPERTY(VisibleAnywhere)
 	USplineComponent* SplineComponent;
 
