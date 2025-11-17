@@ -1,5 +1,3 @@
-// Fill out your copyright notice in the Description page of Project Settings.
-
 #pragma once
 
 #include <cmath>
@@ -7,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Http.h"
+#include "Blueprint/WidgetTree.h"
 #include "Components/SplineComponent.h"
 #include "Components/SplineMeshComponent.h"
 #include "ArcGISMapsSDK/BlueprintNodes/GameEngine/Geometry/ArcGISSpatialReference.h"
@@ -14,6 +13,8 @@
 #include "ArcGISMapsSDK/Components/ArcGISMapComponent.h"
 #include "ArcGISMapsSDK/Utils/GeoCoord/GeoPosition.h"
 #include "ArcGISMapsSDK/Actors/ArcGISMapActor.h"
+#include "Components/TextBlock.h"
+#include "Kismet/KismetStringLibrary.h"
 #include "FeatureLayerQuery.generated.h"
 
 UCLASS()
@@ -28,7 +29,6 @@ public:
 
 	virtual void OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool IsConnected);
 	virtual void ProcessRequest();
-
 	virtual void UpdateTrack();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
@@ -49,6 +49,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	int CheckpointIndex;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	float ElapsedTime;
+
 	UPROPERTY(VisibleAnywhere)
 	USplineComponent* SplineComponent;
 
@@ -65,14 +68,19 @@ public:
 	AArcGISMapActor* MapActor;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite)
-	TEnumAsByte<ESplineMeshAxis::Type> ForwardAxis;
+	TSubclassOf<UUserWidget> WidgetBlueprintClass;
 
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
 private:
-
 	FString weblink = "https://services2.arcgis.com/yL7v93RXrxlqkeDx/arcgis/rest/services/F1_World_Championship_Circuits/FeatureServer/0/query?f=geojson&where=1=1&outfields=*";
+	bool isLoaded = false;
 
+	bool isFinished = false;
+
+	UWidgetTree* widgetTree;
+	UTextBlock* timerText;
+	UTextBlock* checkpointText;
+	UTextBlock* winLossText;
 };
